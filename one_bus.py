@@ -1,4 +1,4 @@
-#!/home/jessicas/ext/code/onebus/onebus/bin/python
+#!/home/ubuntu/one_bus/onebus/bin/python
 # coding: utf-8
 
 # ####*What do I want to do?*
