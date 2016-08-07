@@ -30,6 +30,9 @@ import datetime
 import sqlalchemy
 import logging
 import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from sqlalchemy import Column, Integer, Unicode, UnicodeText, String, DateTime, Float
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -184,7 +187,34 @@ def run(bus_stops):
         logger.error('broken by control c')
         sys.exit()
 
+def send_unhandled_error_email(e):
+
+    # Open a plain text file for reading.  For this example, assume that
+    # the text file contains only ASCII characters.
+    fromaddr = "jessishank1@gmail.com"
+    toaddr = "jessishank1@gmail.com"
+    # Create a text/plain message
+    msg = MIMEMultipart()
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    msg['Subject'] = 'Unhandled Error from OneBus script!'
+    # could be better.
+    body = '\n'.join([error for error in e.args])
+    msg.attach(MIMEText(body, 'plain'))
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(fromaddr, 'chocolateeggs')
+    text = msg.as_string()
+    server.sendmail(fromaddr, toaddr, text)
+    # s.sendmail(me, [you], msg.as_string())
+    server.quit()
+
+
 if __name__=='__main__':
-    run('6050')
+    try:
+        run('6050')
+    except Exception as e:
+        send_unhandled_error_email(e)
+        sys.exit()
 
 
