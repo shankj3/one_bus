@@ -18,6 +18,9 @@
 # db: one_bus
 
 
+### proper python daemon?
+#http://stackoverflow.com/questions/473620/how-do-you-create-a-daemon-in-python/9047339#9047339
+
 import os
 import sys
 import requests
@@ -150,7 +153,7 @@ def run(bus_stops):
             if is_in_rush_hour(current_time):
                 time_sleep = 60
             else:
-                time_sleep = 1
+                time_sleep = 500
             logger.info('Sleeping for {0} s'.format(time_sleep))
             time.sleep(time_sleep)
             selected_stops = get_random_list(bus_stops, 20)
