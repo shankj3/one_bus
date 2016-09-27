@@ -31,6 +31,7 @@ import sqlalchemy
 import logging
 import random
 import smtplib
+import luigi 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from sqlalchemy import Column, Integer, Unicode, UnicodeText, String, DateTime, Float
@@ -208,6 +209,78 @@ def send_unhandled_error_email(e):
     server.sendmail(fromaddr, toaddr, text)
     # s.sendmail(me, [you], msg.as_string())
     server.quit()
+
+
+class GrabFromApi(luigi.Task):
+    def output(self):
+        # this filepath should be a temp directory
+        return luigi.LocalTarget('filepath.csv' % self.date_interval)
+
+    def run(self, bus_stops):
+        s = requests.Session()
+        s.mount('http://', requests.adapters.HTTPAdapter(max_retries=5))
+        selected_stops = get_random_list(bus_stops, 20)
+        logger.info('Choice + randomly selected bus stops: \n{0}'.format(selected_stops))
+        dataframes = []
+        for bus_stop in selected_stops:
+            try:
+                # print('reading json')
+                # print("JSON---", get_me_my_departuretimes(bus_stop))
+                departures = get_me_my_departuretimes(bus_stop)
+                logger.info('JSON to be added for {0}: \n{1}'.format(bus_stop, json.dumps(departures, indent=4)))
+                departure_dataframe = pd.DataFrame(departures)
+            except (KeyError, ConnectionError):
+                logger.error("Bus Stop #{0} could not be found".format(bus_stop))
+            else:
+                dataframes.append(departure_dataframe)
+                try:
+                    logger.info('Pruning dataframe for {0}'.format(bus_stop))
+                    pruned = departure_dataframe.drop(['frequency', 'predictedDepartureInterval', 'tripHeadsign', 'situationIds'], axis=1)
+                except ValueError:
+                    logger.error("Could not remove necessary columns from dataframe!!!")
+                    logger.error(departure_dataframe.columns)
+                else:
+                    dataframes.append(pruned)
+        full_df = pd.concat(dataframes)
+        pd.to_csv(full_df, self.output())
+
+
+class PruneData(luigi.Task):
+
+    def requires(self):
+        return GrabFromApi(self.date_interval)
+
+    def output(self):
+        return {'one_bus_api_data': luigi.LocalTarget('pruned.csv' % self.date_interval), 'trip_status': luigi.LocalTarget('pruned.csv' % self.date_interval)}
+
+    def run(self):
+        with self.input().open('r') as in_file:
+            dataframe = pd.from_csv(in_file.read())
+        trip_status = flatten_trip_status(dataframe)
+        trip_status_removed = dataframe.drop(['tripStatus'], axis=1)
+        pd.to_csv(trip_status_removed, self.output['one_bus_api_data'])
+        renamed_trip_status = trip_status.rename(columns={
+                                                          "position.lat": "position_lat",
+                                                          "position.lon": "position_lon",
+                                                          "lastKnownLocation.lat": "lastKnownLocation_lat",
+                                                          "lastKnownLocation.lon": "lastKnownLocation_lon"
+                                                         }
+                                                )
+        renamed_trip_status.drop('situationIds', axis=1).to_csv(self.output['trip_status'])
+        # get rid of crap that you're putting in one bus away API 
+
+
+
+class OneBusDataToDb(luigi.postgres.CopyToTable):
+
+    date_interval = luigi.DateIntervalParameter()
+
+    host = 'amazonhost'
+    database = 'one_bus'
+    user = 'whatever'
+    password = 'works'
+    table = 'i need two tables'
+
 
 
 if __name__=='__main__':
